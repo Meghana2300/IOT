@@ -1,0 +1,142 @@
+#include<SoftwareSerial.h>
+
+#define TRIG 4
+#define ECHO 5
+
+#define DEPTH 12
+#define VOLUME_CLY 56.75
+
+SoftwareSerial esp(2,3);
+
+String ssid = "fuel";                    
+String password = "fuel1234";
+
+/*
+ * Volume of a Cylinder 
+ * V = πr²h
+ * Here r (radius) = 4.25 cm
+ *      h (height) = 12 cm
+ * volume = 680.94 (approx.)
+ * 
+ * Let, r (radius) = 4.25 cm
+ *     h (height) = 1 cm
+ *     
+ *  Volume = π(4.25)²x(1)
+ *         = 56.75 
+ *  So, Volume of a cylinder for 1 cm of fuel is 56.745
+ *  VOLUME_CLY = 56.75
+ */
+
+
+void setup() 
+{
+  Serial.begin(9600);
+  esp.begin(9600);
+  pinMode(TRIG,OUTPUT);
+  pinMode(ECHO,INPUT);
+  Serial.println("<<< Fuel Fraud Detection and Monitor over IoT >>>");
+  Serial.println("Checking for Wi-Fi Connection");
+  connectwifi();
+  Serial.println("Setup Completed");
+}
+
+void loop() 
+{
+  int bef,aft,dif;
+  bef = level();
+  Serial.println("Initial: "+ String(bef)+" ml");
+  delay(10000);
+
+  aft = level();
+  Serial.println("After: "+ String(aft)+" ml");
+  
+  dif=aft-bef;
+  Serial.println("Difference: "+ String(dif)+" ml"); 
+  
+  post(bef,aft,dif);
+  Serial.println("");
+  delay(3000);
+}
+
+int level()
+{
+  int height,volume;
+  int duration, distance;
+  digitalWrite (TRIG, HIGH);
+  delay(50);
+  digitalWrite (TRIG, LOW);
+  duration= pulseIn(ECHO,HIGH);
+  distance = (duration*0.034)/2;
+  height =  DEPTH - distance;
+  volume = height * VOLUME_CLY;
+  Serial.println("Sensor Read: " + String(distance)+ " cm");
+  Serial.println("Height of the fuel: " + String(height)+ " cm");
+  Serial.println("Volume of the fuel: " + String(volume)+ " ml");
+  return volume;
+}
+
+void post(int value1, int value2 , int value3)
+{
+  String server = "www.orangewebtools.com";   
+  String cmd = "AT+CIPSTART=\"TCP\",\"";
+  cmd += server; 
+  cmd += "\",80";
+  esp.println(cmd);
+  response();
+  delay(500);
+  String uri ="/Fuel/send.php"; 
+  uri += "?a=" + String(value1) + "&b=" + String(value2) + "&c=" + String(value3);
+
+  String getStr = "GET " + uri + " HTTP/1.0\r\n" + "Host: " + server + "\r\n" + "Connection: close\r\n\r\n";
+  
+  String str = "AT+CIPSEND=";
+  str += String(getStr.length());
+  esp.println(str);
+  response();
+  delay(100);
+  if(esp.find(">"))  
+  {
+    esp.println(getStr);
+    showResponse(1000);
+  }
+}
+
+void response()
+{
+  while(esp.available()!=0)
+  Serial.write(char (esp.read()));
+}
+
+void showResponse(int waitTime)
+{
+  long t=millis();
+  char c;
+  while (t+waitTime>millis())
+  {
+  if (esp.available()>0)
+  {
+    c=esp.read();
+    Serial.print(c);
+   }
+  }               
+}
+
+int connectwifi()
+{
+  String cmd ="AT+CWJAP=\"" + ssid + "\",\"" + password + "\"";
+  esp.println(cmd);
+  delay(5000);
+  if(esp.find("OK"))
+  {
+    Serial.println("Wifi Connected");
+    return 1;
+  }
+  else
+  {
+    Serial.println("connecting wifi...");
+    connectwifi(); 
+    delay(1000);
+   }
+}
+
+
